@@ -3,12 +3,14 @@ package com.laconic.scheduler.scheduler.engine;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.laconic.scheduler.scheduler.domain.Schedule;
+import com.laconic.scheduler.scheduler.persistence.ScheduleRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.time.Instant;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class OracleScheduleLoaderTest {
@@ -26,33 +29,37 @@ class OracleScheduleLoaderTest {
     private EntityManager entityManager;
 
     @Mock
-    private Query nativeQuery;
+    private ScheduleRepository scheduleRepository;
+
+    @Mock
+    private Query lockQuery;
 
     private OracleScheduleLoader loader;
 
     @BeforeEach
     void setUp() {
-        loader = new OracleScheduleLoader(entityManager);
+        loader = new OracleScheduleLoader(entityManager, scheduleRepository);
     }
 
     @Test
-    void loadDueForUpdate_mapsLockedIdsToEntities() {
+    void loadDueForUpdate_selectsThenLocks() {
         Instant now = Instant.parse("2026-07-21T10:00:00Z");
         Schedule schedule = Schedule.onceAt("a1", now, "k1", 2);
         schedule.markScheduled();
 
-        when(entityManager.createNativeQuery(anyString())).thenReturn(nativeQuery);
-        when(nativeQuery.setParameter(eq("now"), org.mockito.ArgumentMatchers.any()))
-                .thenReturn(nativeQuery);
-        when(nativeQuery.setParameter(eq("limit"), eq(10))).thenReturn(nativeQuery);
-        when(nativeQuery.getResultList()).thenReturn(List.of("sched-1"));
-        when(entityManager.find(Schedule.class, "sched-1")).thenReturn(schedule);
+        when(scheduleRepository.findDueUnlocked(any(), eq(now), any(Pageable.class)))
+                .thenReturn(List.of(schedule));
+        when(entityManager.createNativeQuery(anyString())).thenReturn(lockQuery);
+        when(lockQuery.setParameter(eq("ids"), eq(List.of(schedule.getId()))))
+                .thenReturn(lockQuery);
+        when(lockQuery.getResultList()).thenReturn(List.of(schedule.getId()));
+        when(entityManager.find(Schedule.class, schedule.getId())).thenReturn(schedule);
 
         List<Schedule> locked = loader.loadDueForUpdate(now, 10);
 
         assertEquals(1, locked.size());
         assertEquals(schedule, locked.getFirst());
-        verify(entityManager).createNativeQuery(anyString());
+        verify(entityManager).find(Schedule.class, schedule.getId());
     }
 
     @Test
@@ -63,15 +70,10 @@ class OracleScheduleLoaderTest {
     }
 
     @Test
-    void loadDueForUpdate_returnsEmptyWhenNoRows() {
-        when(entityManager.createNativeQuery(anyString())).thenReturn(nativeQuery);
-        when(nativeQuery.setParameter(eq("now"), org.mockito.ArgumentMatchers.any()))
-                .thenReturn(nativeQuery);
-        when(nativeQuery.setParameter(eq("limit"), eq(5))).thenReturn(nativeQuery);
-        when(nativeQuery.getResultList()).thenReturn(List.of());
+    void loadDueForUpdate_returnsEmptyWhenNoCandidates() {
+        when(scheduleRepository.findDueUnlocked(any(), any(), any(Pageable.class)))
+                .thenReturn(List.of());
 
-        List<Schedule> locked = loader.loadDueForUpdate(Instant.now(), 5);
-
-        assertTrue(locked.isEmpty());
+        assertTrue(loader.loadDueForUpdate(Instant.now(), 5).isEmpty());
     }
 }

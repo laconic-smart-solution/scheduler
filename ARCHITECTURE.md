@@ -595,11 +595,11 @@ run.bat
 |---|---------|--------|
 | 0 | Skeleton + `run.bat` | Done |
 | 1 | Domain model + Oracle schema | Done |
-| 2 | Persistence repositories + claim query | **Done** |
-| 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | Next |
-| 4 | Quartz single PollJob | Pending |
-| 5 | `TaskExecutor` + `ExecutorRegistry` | Pending |
-| 6 | `WebhookTaskExecutor` | Pending |
+| 2 | Persistence repositories + claim query | Done |
+| 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | **Done** |
+| 4 | Quartz single PollJob | Next |
+| 5 | `TaskExecutor` + `ExecutorRegistry` | Done (minimal; webhook stub) |
+| 6 | `WebhookTaskExecutor` (real HTTP) | Pending |
 | 7 | API (create/get/cancel) | Pending |
 | 8 | Retry + stale RUNNING reaper | Pending |
 | 9 | Health / metrics | Pending |
@@ -648,4 +648,40 @@ run.bat
 
 ---
 
-*End of architecture v2.1*
+## 17. Feature 3 scope + ops notes
+
+**Flyway removed.** Schema is created/updated by Hibernate (`spring.jpa.hibernate.ddl-auto=update`) against Oracle `LCN_SCHEDULER`. Reference DDL: `src/main/resources/db/schema-oracle.sql`.
+
+**Pipeline**
+
+```text
+SchedulerEngine.tick
+  → ScheduleLoader (SKIP LOCKED)
+  → ScheduleClaimer (RUNNING)
+  → ExecutionDispatcher
+       → ExecutionRecorder
+       → ExecutorRegistry → TaskExecutor (Webhook stub)
+  → schedule SUCCESS / RETRYING / DEAD
+```
+
+**Oracle**
+
+```env
+SPRING_DATASOURCE_URL=jdbc:oracle:thin:@//192.168.0.131:1521/LACONIC
+SPRING_DATASOURCE_USERNAME=LCN_SCHEDULER
+SPRING_DATASOURCE_PASSWORD=***
+```
+
+**In scope**
+
+- `DefaultSchedulerEngine`, `DefaultExecutionDispatcher`, `JpaExecutionRecorder`
+- `ExecutorRegistry`, `TaskExecutor`, stub `WebhookTaskExecutor`
+- Unit + Oracle IT (`SchedulerEngineOracleIT`)
+
+**Out of scope**
+
+- Quartz poll job, real HTTP webhook, REST API
+
+---
+
+*End of architecture v2.2*

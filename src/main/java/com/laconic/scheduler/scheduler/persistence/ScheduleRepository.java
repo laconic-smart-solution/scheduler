@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,7 +22,7 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
     List<Schedule> findByStatusIn(Collection<ScheduleStatus> statuses);
 
     /**
-     * Peek due schedules without locking (ops / metrics). Not used for execution claims.
+     * Peek due schedules without locking (also used as claim candidates before SKIP LOCKED).
      */
     @Query(
             """
@@ -33,5 +34,6 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             """)
     List<Schedule> findDueUnlocked(
             @Param("statuses") Collection<ScheduleStatus> statuses,
-            @Param("now") Instant now);
+            @Param("now") Instant now,
+            Pageable pageable);
 }

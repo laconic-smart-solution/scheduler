@@ -1,4 +1,5 @@
--- Feature 1: business schema (Oracle). Quartz is not the source of truth.
+-- Reference DDL for LCN_SCHEDULER (Oracle).
+-- Schema is applied by Hibernate ddl-auto=update; this file is documentation only.
 
 CREATE TABLE SCHEDULER_ACTION (
     ID              VARCHAR2(36)   NOT NULL,
@@ -49,5 +50,3 @@ CREATE TABLE SCHEDULER_EXECUTION (
     CONSTRAINT FK_EXECUTION_ACTION FOREIGN KEY (ACTION_ID) REFERENCES SCHEDULER_ACTION (ID),
     CONSTRAINT UQ_EXECUTION_ATTEMPT UNIQUE (SCHEDULE_ID, ATTEMPT_NO)
 );
-
-CREATE INDEX IX_EXECUTION_SCHEDULE ON SCHEDULER_EXECUTION (SCHEDULE_ID);
