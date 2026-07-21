@@ -594,9 +594,9 @@ run.bat
 | # | Feature | Status |
 |---|---------|--------|
 | 0 | Skeleton + `run.bat` | Done |
-| 1 | Domain model + Oracle schema | **Current** |
-| 2 | Persistence repositories + claim query | Next |
-| 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | Pending |
+| 1 | Domain model + Oracle schema | Done |
+| 2 | Persistence repositories + claim query | **Done** |
+| 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | Next |
 | 4 | Quartz single PollJob | Pending |
 | 5 | `TaskExecutor` + `ExecutorRegistry` | Pending |
 | 6 | `WebhookTaskExecutor` | Pending |
@@ -606,7 +606,7 @@ run.bat
 
 ---
 
-## 15. Feature 1 scope (this increment)
+## 15. Feature 1 scope
 
 **In scope**
 
@@ -621,4 +621,31 @@ run.bat
 
 ---
 
-*End of architecture v2.0*
+## 16. Feature 2 scope
+
+**Design**
+
+- Spring Data repositories for CRUD / idempotency / unlocked due peek
+- `ScheduleLoader` locks due rows with Oracle `FOR UPDATE SKIP LOCKED`
+- `ScheduleClaimer` applies domain `markRunning()` and saves
+- Same transaction must wrap load + claim (enforced by Feature 3 engine)
+
+**Why**
+
+- Horizontal scale without per-schedule Quartz triggers
+- Peer instances skip locked rows instead of waiting / double-firing
+- Domain rules stay outside SQL (`markRunning`)
+
+**In scope**
+
+- `ActionRepository`, `ScheduleRepository`, `ExecutionRepository`
+- `OracleScheduleLoader`, `DomainScheduleClaimer`
+- Unit tests with mocked `EntityManager` / repository
+
+**Out of scope**
+
+- Full `SchedulerEngine` tick loop, Quartz poll job, executors, HTTP API
+
+---
+
+*End of architecture v2.1*
