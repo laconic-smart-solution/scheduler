@@ -597,9 +597,9 @@ run.bat
 | 1 | Domain model + Oracle schema | Done |
 | 2 | Persistence repositories + claim query | Done |
 | 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | **Done** |
-| 4 | Quartz single PollJob | Next |
+| 4 | Quartz single PollJob | **Done** |
 | 5 | `TaskExecutor` + `ExecutorRegistry` | Done (minimal; webhook stub) |
-| 6 | `WebhookTaskExecutor` (real HTTP) | Pending |
+| 6 | `WebhookTaskExecutor` (real HTTP) | Next |
 | 7 | API (create/get/cancel) | Pending |
 | 8 | Retry + stale RUNNING reaper | Pending |
 | 9 | Health / metrics | Pending |
@@ -684,4 +684,30 @@ SPRING_DATASOURCE_PASSWORD=***
 
 ---
 
-*End of architecture v2.2*
+## 18. Feature 4 scope
+
+**Design**
+
+- Exactly **one** Quartz `JobDetail` + repeating trigger (`scheduler.poll.interval-ms`, default 5000)
+- `SchedulePollJob` → `SchedulerEngine.tick()` only
+- In-memory Quartz job store (business data stays in Oracle)
+- `@DisallowConcurrentExecution` on the poll job
+- `scheduler.poll.enabled=false` in tests so ITs call the engine directly
+
+**Why**
+
+- O(1) Quartz jobs regardless of schedule volume
+- Oracle remains source of truth for due work
+
+**In scope**
+
+- `QuartzPollConfiguration`, `SchedulePollJob`, Spring job autowiring
+- Unit tests for job + trigger config
+
+**Out of scope**
+
+- Real HTTP webhook, REST API, JDBC Quartz clustering
+
+---
+
+*End of architecture v2.3*
