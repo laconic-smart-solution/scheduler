@@ -600,8 +600,8 @@ run.bat
 | 4 | Quartz single PollJob | **Done** |
 | 5 | `TaskExecutor` + `ExecutorRegistry` | Done (minimal; webhook stub) |
 | 6 | `WebhookTaskExecutor` (real HTTP) | **Done** |
-| 7 | API (create/get/cancel) | Next |
-| 8 | Retry + stale RUNNING reaper | Pending |
+| 7 | API (create/get/cancel) | **Done** |
+| 8 | Retry + stale RUNNING reaper | Next |
 | 9 | Health / metrics | Pending |
 
 ---
@@ -731,4 +731,25 @@ SPRING_DATASOURCE_PASSWORD=***
 
 ---
 
-*End of architecture v2.4*
+## 20. Feature 7 scope
+
+**Design**
+
+- `POST /api/v1/schedules` — create Action + Schedule (`SCHEDULED`); idempotent via `idempotencyKey`
+- `GET /api/v1/schedules/{id}`
+- `POST /api/v1/schedules/{id}/cancel`
+- Validate WEBHOOK payload on create via `WebhookPayloadParser`
+- `ApiExceptionHandler` for 400/404/409/500
+
+**In scope**
+
+- DTOs, `ScheduleApplicationService`, `ScheduleController`, exception handling
+- Unit + Oracle MockMvc IT
+
+**Out of scope**
+
+- Retry reaper, metrics dashboards
+
+---
+
+*End of architecture v2.5*
