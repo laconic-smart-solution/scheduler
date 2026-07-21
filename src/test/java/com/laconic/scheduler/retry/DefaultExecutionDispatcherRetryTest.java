@@ -12,12 +12,14 @@ import com.laconic.scheduler.executor.ExecutorRegistry;
 import com.laconic.scheduler.executor.TaskExecutionException;
 import com.laconic.scheduler.executor.TaskExecutor;
 import com.laconic.scheduler.execution.dispatcher.DefaultExecutionDispatcher;
+import com.laconic.scheduler.metrics.SchedulerMetrics;
 import com.laconic.scheduler.scheduler.domain.Action;
 import com.laconic.scheduler.scheduler.domain.ActionType;
 import com.laconic.scheduler.scheduler.domain.Schedule;
 import com.laconic.scheduler.scheduler.domain.ScheduleStatus;
 import com.laconic.scheduler.scheduler.persistence.ActionRepository;
 import com.laconic.scheduler.scheduler.persistence.ScheduleRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +58,8 @@ class DefaultExecutionDispatcherRetryTest {
                         scheduleRepository,
                         executorRegistry,
                         executionRecorder,
-                        applier);
+                        applier,
+                        new SchedulerMetrics(new SimpleMeterRegistry()));
     }
 
     @Test

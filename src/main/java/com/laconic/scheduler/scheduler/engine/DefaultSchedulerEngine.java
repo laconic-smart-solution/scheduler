@@ -1,6 +1,8 @@
 package com.laconic.scheduler.scheduler.engine;
 
 import com.laconic.scheduler.execution.dispatcher.ExecutionDispatcher;
+import com.laconic.scheduler.health.SchedulerRuntimeProbe;
+import com.laconic.scheduler.metrics.SchedulerMetrics;
 import com.laconic.scheduler.retry.StaleRunningReaper;
 import com.laconic.scheduler.scheduler.domain.Schedule;
 import java.time.Instant;
@@ -28,6 +30,8 @@ public class DefaultSchedulerEngine implements SchedulerEngine {
     private final ScheduleClaimer scheduleClaimer;
     private final ExecutionDispatcher executionDispatcher;
     private final Optional<StaleRunningReaper> staleRunningReaper;
+    private final SchedulerRuntimeProbe runtimeProbe;
+    private final SchedulerMetrics schedulerMetrics;
     private final int defaultBatchSize;
 
     public DefaultSchedulerEngine(
@@ -35,11 +39,15 @@ public class DefaultSchedulerEngine implements SchedulerEngine {
             ScheduleClaimer scheduleClaimer,
             ExecutionDispatcher executionDispatcher,
             Optional<StaleRunningReaper> staleRunningReaper,
+            SchedulerRuntimeProbe runtimeProbe,
+            SchedulerMetrics schedulerMetrics,
             @Value("${scheduler.engine.batch-size:50}") int defaultBatchSize) {
         this.scheduleLoader = Objects.requireNonNull(scheduleLoader);
         this.scheduleClaimer = Objects.requireNonNull(scheduleClaimer);
         this.executionDispatcher = Objects.requireNonNull(executionDispatcher);
         this.staleRunningReaper = Objects.requireNonNullElse(staleRunningReaper, Optional.empty());
+        this.runtimeProbe = Objects.requireNonNull(runtimeProbe);
+        this.schedulerMetrics = Objects.requireNonNull(schedulerMetrics);
         if (defaultBatchSize < 1) {
             throw new IllegalArgumentException("scheduler.engine.batch-size must be >= 1");
         }
@@ -55,16 +63,43 @@ public class DefaultSchedulerEngine implements SchedulerEngine {
     @Transactional
     public int tick(Instant now, int batchSize) {
         Instant waterline = Objects.requireNonNull(now, "now");
-        staleRunningReaper.ifPresent(reaper -> reaper.reap(waterline));
+        long started = System.currentTimeMillis();
+        try {
+            int reaped =
+                    staleRunningReaper.map(reaper -> reaper.reap(waterline)).orElse(0);
 
-        List<Schedule> due = scheduleLoader.loadDueForUpdate(waterline, batchSize);
-        int processed = 0;
-        for (Schedule locked : due) {
-            Schedule claimed = scheduleClaimer.claim(locked);
-            executionDispatcher.dispatch(claimed);
-            processed++;
+            List<Schedule> due = scheduleLoader.loadDueForUpdate(waterline, batchSize);
+            long lagMs = computePollLagMs(due, waterline);
+            int processed = 0;
+            for (Schedule locked : due) {
+                Schedule claimed = scheduleClaimer.claim(locked);
+                executionDispatcher.dispatch(claimed);
+                processed++;
+            }
+
+            long durationMs = System.currentTimeMillis() - started;
+            runtimeProbe.recordSuccess(waterline, processed, reaped);
+            schedulerMetrics.recordTick(processed, reaped, durationMs, lagMs, due.size());
+            log.info(
+                    "SchedulerEngine tick processed={} reaped={} at={}",
+                    processed,
+                    reaped,
+                    waterline);
+            return processed;
+        } catch (RuntimeException ex) {
+            runtimeProbe.recordFailure(waterline, ex.getMessage());
+            throw ex;
         }
-        log.info("SchedulerEngine tick processed={} at={}", processed, waterline);
-        return processed;
+    }
+
+    private static long computePollLagMs(List<Schedule> due, Instant now) {
+        long lag = 0L;
+        for (Schedule schedule : due) {
+            Instant next = schedule.getNextExecutionAt();
+            if (next != null && next.isBefore(now)) {
+                lag = Math.max(lag, now.toEpochMilli() - next.toEpochMilli());
+            }
+        }
+        return lag;
     }
 }

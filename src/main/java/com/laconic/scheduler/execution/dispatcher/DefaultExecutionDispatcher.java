@@ -6,6 +6,7 @@ import com.laconic.scheduler.execution.recorder.ExecutionRecorder;
 import com.laconic.scheduler.executor.ExecutorRegistry;
 import com.laconic.scheduler.executor.TaskExecutionException;
 import com.laconic.scheduler.executor.TaskExecutor;
+import com.laconic.scheduler.metrics.SchedulerMetrics;
 import com.laconic.scheduler.retry.ScheduleFailureApplier;
 import com.laconic.scheduler.scheduler.domain.Action;
 import com.laconic.scheduler.scheduler.domain.Schedule;
@@ -37,18 +38,21 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
     private final ExecutorRegistry executorRegistry;
     private final ExecutionRecorder executionRecorder;
     private final ScheduleFailureApplier failureApplier;
+    private final SchedulerMetrics schedulerMetrics;
 
     public DefaultExecutionDispatcher(
             ActionRepository actionRepository,
             ScheduleRepository scheduleRepository,
             ExecutorRegistry executorRegistry,
             ExecutionRecorder executionRecorder,
-            ScheduleFailureApplier failureApplier) {
+            ScheduleFailureApplier failureApplier,
+            SchedulerMetrics schedulerMetrics) {
         this.actionRepository = Objects.requireNonNull(actionRepository);
         this.scheduleRepository = Objects.requireNonNull(scheduleRepository);
         this.executorRegistry = Objects.requireNonNull(executorRegistry);
         this.executionRecorder = Objects.requireNonNull(executionRecorder);
         this.failureApplier = Objects.requireNonNull(failureApplier);
+        this.schedulerMetrics = Objects.requireNonNull(schedulerMetrics);
     }
 
     @Override
@@ -64,6 +68,7 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
                                                 "Action not found: " + schedule.getActionId()));
 
         Instant triggeredTime = Instant.now();
+        long started = System.currentTimeMillis();
         Execution execution = executionRecorder.start(schedule, action, triggeredTime);
 
         ExecutionContext context =
@@ -83,6 +88,8 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
             executor.execute(context);
             executionRecorder.markSuccess(execution, "{\"result\":\"ok\"}");
             applySuccess(schedule);
+            schedulerMetrics.recordDispatchSuccess(
+                    action.getType(), System.currentTimeMillis() - started);
             log.info(
                     "Dispatch SUCCESS scheduleId={} executionId={} type={}",
                     schedule.getId(),
@@ -95,6 +102,8 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
                             : ex.getClass().getSimpleName();
             executionRecorder.markFailed(execution, errorCode, ex.getMessage());
             failureApplier.applyFailure(schedule, triggeredTime);
+            schedulerMetrics.recordDispatchFailure(
+                    action.getType(), errorCode, System.currentTimeMillis() - started);
             log.warn(
                     "Dispatch FAILED scheduleId={} executionId={} code={}: {}",
                     schedule.getId(),

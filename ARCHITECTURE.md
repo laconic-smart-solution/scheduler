@@ -602,7 +602,7 @@ run.bat
 | 6 | `WebhookTaskExecutor` (real HTTP) | **Done** |
 | 7 | API (create/get/cancel) | **Done** |
 | 8 | Retry + stale RUNNING reaper | **Done** |
-| 9 | Health / metrics | Next |
+| 9 | Health / metrics | **Done** |
 
 ---
 
@@ -778,4 +778,31 @@ SPRING_DATASOURCE_PASSWORD=***
 
 ---
 
-*End of architecture v2.6*
+## 22. Feature 9 scope
+
+**Design**
+
+- `SchedulerRuntimeProbe` — last tick time / processed / reaped / error
+- `PollHealthIndicator` — DOWN if poll enabled and no successful tick within `interval × multiplier`
+- Built-in datasource health covers Oracle
+- `SchedulerMetrics` (Micrometer): tick processed/duration, reaper reaped, poll lag, due backlog, per-`ActionType` dispatch counters/timers
+- Actuator exposes `health`, `info`, `metrics`, `prometheus`
+
+**Endpoints**
+
+- `GET /actuator/health`
+- `GET /actuator/metrics`
+- `GET /actuator/prometheus`
+
+**In scope**
+
+- Health + Micrometer wiring into engine/dispatcher
+- Unit tests; CI continues to exclude `@Tag("oracle")`
+
+**Out of scope**
+
+- Grafana dashboards, alerting rules, distributed tracing
+
+---
+
+*End of architecture v2.7*
