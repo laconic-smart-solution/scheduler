@@ -599,8 +599,8 @@ run.bat
 | 3 | SchedulerEngine pipeline (load/claim/dispatch/record) | **Done** |
 | 4 | Quartz single PollJob | **Done** |
 | 5 | `TaskExecutor` + `ExecutorRegistry` | Done (minimal; webhook stub) |
-| 6 | `WebhookTaskExecutor` (real HTTP) | Next |
-| 7 | API (create/get/cancel) | Pending |
+| 6 | `WebhookTaskExecutor` (real HTTP) | **Done** |
+| 7 | API (create/get/cancel) | Next |
 | 8 | Retry + stale RUNNING reaper | Pending |
 | 9 | Health / metrics | Pending |
 
@@ -710,4 +710,25 @@ SPRING_DATASOURCE_PASSWORD=***
 
 ---
 
-*End of architecture v2.3*
+## 19. Feature 6 scope
+
+**Design**
+
+- `WebhookPayload` JSON: `url`, optional `method` (default POST), `headers`, `body`
+- `WebhookPayloadParser` validates payload
+- Shared `WebClient` with connect/response timeouts
+- `WebhookTaskExecutor` performs HTTP call; 2xx = success; otherwise `TaskExecutionException` (`HTTP_xxx` / `HTTP_REQUEST_FAILED`)
+- Adds scheduler tracing headers: `X-Scheduler-Schedule-Id`, `X-Scheduler-Execution-Id`, `X-Scheduler-Action-Id`, `X-Scheduler-Retry-Count`
+
+**In scope**
+
+- Real HTTP executor + parser + WebClient config
+- Unit tests (MockWebServer) + Oracle IT with MockWebServer
+
+**Out of scope**
+
+- REST API to create schedules, retry reaper, metrics
+
+---
+
+*End of architecture v2.4*

@@ -12,15 +12,22 @@ import com.laconic.scheduler.scheduler.domain.Schedule;
 import com.laconic.scheduler.scheduler.domain.ScheduleStatus;
 import com.laconic.scheduler.scheduler.persistence.ActionRepository;
 import com.laconic.scheduler.scheduler.persistence.ScheduleRepository;
+import com.laconic.scheduler.webhook.WebhookTaskExecutor;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
- * Integration test against Oracle {@code LCN_SCHEDULER} (see {@code .env}).
+ * Integration test against Oracle {@code LCN_SCHEDULER} with a real HTTP webhook (MockWebServer).
  */
 @SpringBootTest
 class SchedulerEngineOracleIT {
@@ -37,20 +44,34 @@ class SchedulerEngineOracleIT {
     @Autowired
     private ExecutionRepository executionRepository;
 
+    private MockWebServer mockWebServer;
+
     @BeforeEach
-    void requireOracle() {
-        assumeTrue(
-                actionRepository != null,
-                "Spring context / Oracle datasource not available");
+    void setUp() throws IOException {
+        assumeTrue(actionRepository != null, "Spring context / Oracle datasource not available");
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (mockWebServer != null) {
+            mockWebServer.shutdown();
+        }
     }
 
     @Test
-    void tick_claimsDueWebhookAndMarksSuccess() {
+    void tick_claimsDueWebhookAndMarksSuccess() throws Exception {
+        mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{\"ok\":true}"));
+
+        String hookUrl = mockWebServer.url("/scheduler-hook").toString();
         String key = "it-" + UUID.randomUUID();
         Action action =
                 new Action(
                         ActionType.WEBHOOK,
-                        "{\"url\":\"https://example.com/hook\",\"source\":\"oracle-it\"}",
+                        "{\"url\":\""
+                                + hookUrl
+                                + "\",\"method\":\"POST\",\"body\":{\"source\":\"oracle-it\"}}",
                         null);
         actionRepository.save(action);
 
@@ -69,5 +90,11 @@ class SchedulerEngineOracleIT {
         var executions = executionRepository.findByScheduleIdOrderByAttemptNoAsc(schedule.getId());
         assertEquals(1, executions.size());
         assertEquals(ExecutionStatus.SUCCESS, executions.getFirst().getStatus());
+
+        RecordedRequest request = mockWebServer.takeRequest(3, TimeUnit.SECONDS);
+        assertEquals("POST", request.getMethod());
+        assertEquals("/scheduler-hook", request.getPath());
+        assertEquals(
+                schedule.getId(), request.getHeader(WebhookTaskExecutor.HEADER_SCHEDULE_ID));
     }
 }
