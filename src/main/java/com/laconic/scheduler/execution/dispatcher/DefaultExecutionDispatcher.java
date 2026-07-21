@@ -6,6 +6,7 @@ import com.laconic.scheduler.execution.recorder.ExecutionRecorder;
 import com.laconic.scheduler.executor.ExecutorRegistry;
 import com.laconic.scheduler.executor.TaskExecutionException;
 import com.laconic.scheduler.executor.TaskExecutor;
+import com.laconic.scheduler.retry.ScheduleFailureApplier;
 import com.laconic.scheduler.scheduler.domain.Action;
 import com.laconic.scheduler.scheduler.domain.Schedule;
 import com.laconic.scheduler.scheduler.domain.ScheduleKind;
@@ -28,22 +29,26 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultExecutionDispatcher.class);
 
-    private static final Duration DEFAULT_RETRY_DELAY = Duration.ofMinutes(1);
+    /** Placeholder until cron next-fire calculation lands. */
+    private static final Duration CRON_PLACEHOLDER_DELAY = Duration.ofMinutes(1);
 
     private final ActionRepository actionRepository;
     private final ScheduleRepository scheduleRepository;
     private final ExecutorRegistry executorRegistry;
     private final ExecutionRecorder executionRecorder;
+    private final ScheduleFailureApplier failureApplier;
 
     public DefaultExecutionDispatcher(
             ActionRepository actionRepository,
             ScheduleRepository scheduleRepository,
             ExecutorRegistry executorRegistry,
-            ExecutionRecorder executionRecorder) {
+            ExecutionRecorder executionRecorder,
+            ScheduleFailureApplier failureApplier) {
         this.actionRepository = Objects.requireNonNull(actionRepository);
         this.scheduleRepository = Objects.requireNonNull(scheduleRepository);
         this.executorRegistry = Objects.requireNonNull(executorRegistry);
         this.executionRecorder = Objects.requireNonNull(executionRecorder);
+        this.failureApplier = Objects.requireNonNull(failureApplier);
     }
 
     @Override
@@ -89,7 +94,7 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
                             ? tee.getErrorCode()
                             : ex.getClass().getSimpleName();
             executionRecorder.markFailed(execution, errorCode, ex.getMessage());
-            applyFailure(schedule, triggeredTime);
+            failureApplier.applyFailure(schedule, triggeredTime);
             log.warn(
                     "Dispatch FAILED scheduleId={} executionId={} code={}: {}",
                     schedule.getId(),
@@ -103,20 +108,10 @@ public class DefaultExecutionDispatcher implements ExecutionDispatcher {
 
     private void applySuccess(Schedule schedule) {
         if (schedule.getKind() == ScheduleKind.CRON) {
-            // Cron next-fire calculation arrives with Feature 4/8; park until then.
-            Instant next = Instant.now().plus(DEFAULT_RETRY_DELAY);
+            Instant next = Instant.now().plus(CRON_PLACEHOLDER_DELAY);
             schedule.markSuccess(next);
         } else {
             schedule.markSuccess(null);
-        }
-    }
-
-    private void applyFailure(Schedule schedule, Instant failedAt) {
-        schedule.markFailed();
-        if (schedule.retriesRemaining()) {
-            schedule.markRetrying(failedAt.plus(DEFAULT_RETRY_DELAY));
-        } else {
-            schedule.markDead();
         }
     }
 }

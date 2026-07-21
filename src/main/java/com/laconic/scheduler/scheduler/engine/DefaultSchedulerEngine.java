@@ -1,10 +1,12 @@
 package com.laconic.scheduler.scheduler.engine;
 
 import com.laconic.scheduler.execution.dispatcher.ExecutionDispatcher;
+import com.laconic.scheduler.retry.StaleRunningReaper;
 import com.laconic.scheduler.scheduler.domain.Schedule;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Default engine pipeline.
  * <p>
- * Quartz (Feature 4) will only call {@link #tick()}; it does not own schedule rows.
+ * Quartz only calls {@link #tick()}; it does not own schedule rows.
+ * Each tick optionally reaps stale {@code RUNNING} rows, then load → claim → dispatch.
  */
 @Service
 public class DefaultSchedulerEngine implements SchedulerEngine {
@@ -24,16 +27,19 @@ public class DefaultSchedulerEngine implements SchedulerEngine {
     private final ScheduleLoader scheduleLoader;
     private final ScheduleClaimer scheduleClaimer;
     private final ExecutionDispatcher executionDispatcher;
+    private final Optional<StaleRunningReaper> staleRunningReaper;
     private final int defaultBatchSize;
 
     public DefaultSchedulerEngine(
             ScheduleLoader scheduleLoader,
             ScheduleClaimer scheduleClaimer,
             ExecutionDispatcher executionDispatcher,
+            Optional<StaleRunningReaper> staleRunningReaper,
             @Value("${scheduler.engine.batch-size:50}") int defaultBatchSize) {
         this.scheduleLoader = Objects.requireNonNull(scheduleLoader);
         this.scheduleClaimer = Objects.requireNonNull(scheduleClaimer);
         this.executionDispatcher = Objects.requireNonNull(executionDispatcher);
+        this.staleRunningReaper = Objects.requireNonNullElse(staleRunningReaper, Optional.empty());
         if (defaultBatchSize < 1) {
             throw new IllegalArgumentException("scheduler.engine.batch-size must be >= 1");
         }
@@ -49,6 +55,8 @@ public class DefaultSchedulerEngine implements SchedulerEngine {
     @Transactional
     public int tick(Instant now, int batchSize) {
         Instant waterline = Objects.requireNonNull(now, "now");
+        staleRunningReaper.ifPresent(reaper -> reaper.reap(waterline));
+
         List<Schedule> due = scheduleLoader.loadDueForUpdate(waterline, batchSize);
         int processed = 0;
         for (Schedule locked : due) {

@@ -1,0 +1,43 @@
+name: Scheduler CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "src/**"
+      - "pom.xml"
+      - ".mvn/**"
+      - "mvnw"
+      - "mvnw.cmd"
+      - ".github/workflows/**"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "src/**"
+      - "pom.xml"
+      - ".mvn/**"
+      - "mvnw"
+      - "mvnw.cmd"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build
+        run: ./mvnw -B clean package -DskipTests
+
+      - name: Unit tests
+        # Oracle ITs (@Tag("oracle")) need a live LCN_SCHEDULER DB — run locally / in a later job.
+        run: ./mvnw -B test -DexcludedGroups=oracle

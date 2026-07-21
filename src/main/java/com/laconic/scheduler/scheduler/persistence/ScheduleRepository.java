@@ -36,4 +36,19 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             @Param("statuses") Collection<ScheduleStatus> statuses,
             @Param("now") Instant now,
             Pageable pageable);
+
+    /**
+     * Candidate schedules stuck in {@code RUNNING} with {@code updatedAt} older than the lease.
+     */
+    @Query(
+            """
+            select s from Schedule s
+             where s.status = :status
+               and s.updatedAt < :staleBefore
+             order by s.updatedAt asc
+            """)
+    List<Schedule> findStaleRunningUnlocked(
+            @Param("status") ScheduleStatus status,
+            @Param("staleBefore") Instant staleBefore,
+            Pageable pageable);
 }

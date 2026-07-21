@@ -601,8 +601,8 @@ run.bat
 | 5 | `TaskExecutor` + `ExecutorRegistry` | Done (minimal; webhook stub) |
 | 6 | `WebhookTaskExecutor` (real HTTP) | **Done** |
 | 7 | API (create/get/cancel) | **Done** |
-| 8 | Retry + stale RUNNING reaper | Next |
-| 9 | Health / metrics | Pending |
+| 8 | Retry + stale RUNNING reaper | **Done** |
+| 9 | Health / metrics | Next |
 
 ---
 
@@ -752,4 +752,30 @@ SPRING_DATASOURCE_PASSWORD=***
 
 ---
 
-*End of architecture v2.5*
+## 21. Feature 8 scope
+
+**Design**
+
+- `RetryPolicy` / `ExponentialBackoffRetryPolicy` — `baseDelay * multiplier^(attempt-1)`, capped by `maxDelay`
+- `ScheduleFailureApplier` — shared `RUNNING → FAILED → RETRYING|DEAD`
+- `StaleRunningReaper` — schedules with `status=RUNNING` and `updatedAt` older than lease; closes open `Execution`s with `STALE_RUNNING_REAPED`; then applies failure policy
+- Reaper uses the same `FOR UPDATE SKIP LOCKED` pattern as due loading
+- Engine `tick()` runs reaper first, then load → claim → dispatch
+
+**Config**
+
+- `scheduler.retry.base-delay-ms` / `multiplier` / `max-delay-ms`
+- `scheduler.reaper.enabled` / `stale-after-ms` / `batch-size`
+
+**In scope**
+
+- Retry package + dispatcher wiring + engine reaper hook
+- Unit tests; Oracle ITs remain `@Tag("oracle")` for local runs
+
+**Out of scope**
+
+- Cron next-fire expression evaluation, metrics dashboards
+
+---
+
+*End of architecture v2.6*

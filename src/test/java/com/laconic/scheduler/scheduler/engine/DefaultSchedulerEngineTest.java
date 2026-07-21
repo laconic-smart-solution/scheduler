@@ -8,9 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.laconic.scheduler.execution.dispatcher.ExecutionDispatcher;
+import com.laconic.scheduler.retry.StaleRunningReaper;
 import com.laconic.scheduler.scheduler.domain.Schedule;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,13 +31,20 @@ class DefaultSchedulerEngineTest {
     @Mock
     private ExecutionDispatcher executionDispatcher;
 
+    @Mock
+    private StaleRunningReaper staleRunningReaper;
+
     private DefaultSchedulerEngine engine;
 
     @BeforeEach
     void setUp() {
         engine =
                 new DefaultSchedulerEngine(
-                        scheduleLoader, scheduleClaimer, executionDispatcher, 10);
+                        scheduleLoader,
+                        scheduleClaimer,
+                        executionDispatcher,
+                        Optional.of(staleRunningReaper),
+                        10);
     }
 
     @Test
@@ -53,6 +62,7 @@ class DefaultSchedulerEngineTest {
         int processed = engine.tick(now, 10);
 
         assertEquals(1, processed);
+        verify(staleRunningReaper).reap(now);
         verify(executionDispatcher).dispatch(claimed);
     }
 
@@ -60,5 +70,6 @@ class DefaultSchedulerEngineTest {
     void tick_returnsZeroWhenNothingDue() {
         when(scheduleLoader.loadDueForUpdate(any(), anyInt())).thenReturn(List.of());
         assertEquals(0, engine.tick(Instant.now(), 5));
+        verify(staleRunningReaper).reap(any());
     }
 }
